@@ -72,16 +72,26 @@ exports.main = async (event, context) => {
         console.log('🔄 重置后玩家数据:', resetPlayers.map(p => ({ name: p.nickName, chips: p.chips })))
 
         // 投票通过，重置游戏状态
+        // 关键修复：使用完整的 currentRound 对象替换，而不是点号更新
+        // 这样可以确保 submissions 被完全清空，避免旧数据残留
+        // 添加 gameSessionId 用于区分不同对局
+        const gameSessionId = Date.now().toString()
+
         await db.collection('rooms').doc(roomId).update({
           data: {
             status: 'playing',
             players: resetPlayers,  // 重置玩家筹码
             lastRoundNumber: 0,  // 重置局数
-            'currentRound.roundNumber': 1,  // 从第1局开始
-            'currentRound.submissions': {},
-            'currentRound.allSubmitted': false,
-            'currentRound.isBalanced': false,
-            'currentRound.totalScore': 0,
+            gameSessionId: gameSessionId,  // 新对局的唯一标识
+            currentRound: {
+              roundNumber: 1,  // 从第1局开始
+              submissions: {},  // 完全清空提交记录
+              allSubmitted: false,
+              isBalanced: false,
+              totalScore: 0,
+              endGameVote: null,  // 清空结束游戏投票
+              gameSessionId: gameSessionId  // 记录对局ID
+            },
             nextRoundVote: {
               ...room.nextRoundVote,
               active: false,

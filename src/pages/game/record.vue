@@ -437,6 +437,7 @@ export default {
           const room = roomResult.data
           this.players = room.players
           const newRoundNumber = room.currentRound?.roundNumber || 1
+          const currentGameSessionId = room.gameSessionId || room.currentRound?.gameSessionId
 
           let dbSubmissions = room.currentRound?.submissions || {}
 
@@ -450,6 +451,7 @@ export default {
             lastRoundNumber: this.lastRoundNumber,
             newRoundNumber: newRoundNumber,
             roundChanged: roundChanged,
+            currentGameSessionId: currentGameSessionId,
             myOpenId: this.myOpenId,
             mySubmissionInDb: mySubmissionInDb,
             dbSubmissionsKeys: Object.keys(dbSubmissions)
@@ -461,8 +463,8 @@ export default {
             this.mySubmitted = false
             this.myScore = ''
             this.isWin = true
-            this.submissions = {}
-            console.log('🔒 局数变化，强制重置 mySubmitted 为 false')
+            this.submissions = {}  // 立即清空，避免旧数据干扰
+            console.log('🔒 局数变化，强制重置 mySubmitted 为 false 并清空 submissions')
           }
 
           this.roundNumber = newRoundNumber
@@ -513,18 +515,9 @@ export default {
             }
           }
 
-          // 局数变化时的特殊处理（已经在前面第428-436行处理了，这里是额外确认）
-          if (roundChanged) {
-            // 局数变化时，即使数据库有记录也强制重置（可能是数据库清理延迟）
-            console.log('🔒 局数变化，再次确认重置状态')
-            this.mySubmitted = false
-            this.myScore = ''
-            this.isWin = true
-          }
-
           // 同步其他玩家的提交记录
-          // 关键修复：只同步测试玩家的记录，真实玩家的记录需要额外验证
-          // 并且只同步当前局的记录
+          // 关键修复：严格验证 roundNumber 和 gameSessionId，只同步当前对局当前局的记录
+          // 注意：这里再次清空是为了确保即使没有检测到 roundChanged，也能清空旧数据
           this.submissions = {}
           Object.keys(dbSubmissions).forEach(key => {
             // 跳过自己的记录（已经在上面处理了）
@@ -535,31 +528,33 @@ export default {
 
             const record = dbSubmissions[key]
 
-            // 验证是否是当前局的记录
-            // 如果记录没有 roundNumber 字段，假设它是当前局的记录（兼容旧数据）
-            if (record.roundNumber && record.roundNumber !== newRoundNumber) {
+            // 严格验证：必须有 roundNumber 字段且等于当前局数
+            // 不再假设缺少 roundNumber 的记录是当前局的（这是问题根源）
+            if (!record.roundNumber) {
+              console.warn(`⚠️ 跳过玩家 ${key} 的记录：缺少 roundNumber 字段`)
+              return
+            }
+
+            if (record.roundNumber !== newRoundNumber) {
               console.warn(`⚠️ 跳过玩家 ${key} 的记录：不是当前局的数据 (记录局数: ${record.roundNumber}, 当前局数: ${newRoundNumber})`)
               return
             }
 
-            if (!record.roundNumber) {
-              console.log(`📊 玩家 ${key} 的记录缺少 roundNumber，假设为当前局`)
+            // 验证 gameSessionId，确保不是其他对局的数据
+            if (currentGameSessionId && record.gameSessionId && record.gameSessionId !== currentGameSessionId) {
+              console.warn(`⚠️ 跳过玩家 ${key} 的记录：不是当前对局的数据 (记录对局ID: ${record.gameSessionId}, 当前对局ID: ${currentGameSessionId})`)
+              return
             }
 
-            // 如果是测试玩家，直接同步
-            if (key.startsWith('test_')) {
-              console.log(`📊 同步测试玩家 ${key} 的记录:`, record)
-              this.$set(this.submissions, key, record)
-            } else {
-              // 如果是真实玩家，需要验证
-              // 只有当记录有 submitted: true 且有合理的 timestamp 时才同步
-              if (record && record.submitted === true && record.timestamp) {
-                console.log(`📊 同步真实玩家 ${key} 的记录:`, record)
-                this.$set(this.submissions, key, record)
-              } else {
-                console.warn(`⚠️ 跳过真实玩家 ${key} 的无效记录:`, record)
-              }
+            // 验证记录的完整性
+            if (!record.submitted || typeof record.timestamp !== 'number') {
+              console.warn(`⚠️ 跳过玩家 ${key} 的无效记录:`, record)
+              return
             }
+
+            // 通过所有验证，同步记录
+            console.log(`📊 同步玩家 ${key} 的记录:`, record)
+            this.$set(this.submissions, key, record)
           })
 
           console.log('📊 同步后 submissions:', JSON.stringify(this.submissions))
@@ -796,19 +791,46 @@ export default {
         if (roomResult.data) {
           const room = roomResult.data
           this.players = room.players
-          this.roundNumber = room.currentRound?.roundNumber || 1
+          const newRoundNumber = room.currentRound?.roundNumber || 1
+          const currentGameSessionId = room.gameSessionId || room.currentRound?.gameSessionId
+          this.roundNumber = newRoundNumber
+          this.lastRoundNumber = newRoundNumber  // 同步更新 lastRoundNumber
+
           console.log('📊 更新局数:', this.roundNumber)
+          console.log('📊 当前对局ID:', currentGameSessionId)
           console.log('📊 数据库 currentRound:', room.currentRound)
           console.log('📊 数据库 submissions:', JSON.stringify(room.currentRound?.submissions))
           console.log('📊 数据库 submissions 的 keys:', Object.keys(room.currentRound?.submissions || {}))
           console.log('📊 我的 openId:', this.myOpenId)
-          console.log('📊 数据库中是否有我的记录:', !!room.currentRound?.submissions?.[this.myOpenId])
 
-          // 如果数据库中有真实玩家的记录，说明云函数没有正确清空
-          if (room.currentRound?.submissions?.[this.myOpenId]) {
-            console.error('❌ 错误：进入新一局时，数据库中还有我的提交记录！')
-            console.error('❌ 我的记录:', room.currentRound.submissions[this.myOpenId])
-          }
+          // 严格验证：只同步当前对局当前局的数据
+          const dbSubmissions = room.currentRound?.submissions || {}
+          Object.keys(dbSubmissions).forEach(key => {
+            const record = dbSubmissions[key]
+
+            // 验证 roundNumber
+            if (!record.roundNumber) {
+              console.warn(`⚠️ 数据库中玩家 ${key} 的记录缺少 roundNumber，跳过`)
+              return
+            }
+
+            if (record.roundNumber !== newRoundNumber) {
+              console.warn(`⚠️ 数据库中玩家 ${key} 的记录不是当前局 (记录局数: ${record.roundNumber}, 当前局数: ${newRoundNumber})`)
+              return
+            }
+
+            // 验证 gameSessionId
+            if (currentGameSessionId && record.gameSessionId && record.gameSessionId !== currentGameSessionId) {
+              console.warn(`⚠️ 数据库中玩家 ${key} 的记录不是当前对局 (记录对局ID: ${record.gameSessionId}, 当前对局ID: ${currentGameSessionId})`)
+              return
+            }
+
+            // 如果是真实玩家且是当前对局当前局的数据，说明云函数没有正确清空
+            if (!key.startsWith('test_')) {
+              console.error(`❌ 错误：进入新一局时，数据库中还有玩家 ${key} 的提交记录！`)
+              console.error('❌ 记录详情:', record)
+            }
+          })
 
           // 强制清空本地 submissions，确保不会使用旧数据
           this.submissions = {}

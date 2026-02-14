@@ -35,11 +35,14 @@ exports.main = async (event, context) => {
     }
 
     // 创建房间
+    const gameSessionId = Date.now().toString()  // 生成对局唯一标识
+
     const room = await db.collection('rooms').add({
       data: {
         roomCode,
         creatorOpenId: OPENID,
         initialChips: initialChips || 1000,
+        gameSessionId: gameSessionId,  // 对局唯一标识
         players: [{
           openId: OPENID,
           nickName: nickName || '玩家1',
@@ -48,7 +51,18 @@ exports.main = async (event, context) => {
         }],
         status: 'waiting',
         createdAt: Date.now(),
-        expireAt: Date.now() + 2 * 60 * 60 * 1000 // 2小时后过期
+        expireAt: Date.now() + 2 * 60 * 60 * 1000, // 2小时后过期
+        // 初始化 currentRound 对象，确保数据隔离
+        currentRound: {
+          roundNumber: 1,
+          submissions: {},
+          allSubmitted: false,
+          isBalanced: false,
+          totalScore: 0,
+          endGameVote: null,
+          gameSessionId: gameSessionId  // 记录对局ID
+        },
+        lastRoundNumber: 0
       }
     })
 

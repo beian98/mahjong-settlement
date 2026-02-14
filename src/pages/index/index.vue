@@ -145,32 +145,53 @@ export default {
       }
     },
 
-    joinRoom() {
-      // 检查是否有进行中的对局
-      const currentRoom = wx.getStorageSync('currentRoom')
-      if (currentRoom && currentRoom.roomId) {
-        // 有进行中的对局，询问是否恢复
-        wx.showModal({
-          title: '恢复游戏',
-          content: `检测到房间 ${currentRoom.roomCode} 正在进行中，是否继续游戏？`,
-          confirmText: '继续游戏',
-          cancelText: '加入其他房间',
-          success: (res) => {
-            if (res.confirm) {
-              // 继续当前游戏
-              uni.navigateTo({
-                url: `/pages/game/record?roomId=${currentRoom.roomId}&roomCode=${currentRoom.roomCode}`
-              })
-            } else {
-              // 加入其他房间
-              uni.navigateTo({
-                url: '/pages/room/join'
-              })
-            }
-          }
+    async joinRoom() {
+      // 显示加载提示
+      uni.showLoading({
+        title: '检查中...'
+      })
+
+      try {
+        // 调用云函数检查是否有未结束的对局
+        const result = await wx.cloud.callFunction({
+          name: 'checkOngoingGame',
+          data: {}
         })
-      } else {
-        // 没有进行中的对局，直接跳转到加入房间页面
+
+        uni.hideLoading()
+
+        if (result.result.success && result.result.hasOngoingGame) {
+          // 有未结束的对局，询问是否恢复
+          const room = result.result.room
+          wx.showModal({
+            title: '恢复游戏',
+            content: `检测到房间 ${room.roomCode} 正在进行中，是否继续游戏？`,
+            confirmText: '继续游戏',
+            cancelText: '加入其他房间',
+            success: (res) => {
+              if (res.confirm) {
+                // 继续当前游戏
+                uni.navigateTo({
+                  url: `/pages/game/record?roomId=${room._id}&roomCode=${room.roomCode}&initialChips=${room.initialChips}`
+                })
+              } else {
+                // 加入其他房间
+                uni.navigateTo({
+                  url: '/pages/room/join'
+                })
+              }
+            }
+          })
+        } else {
+          // 没有进行中的对局，直接跳转到加入房间页面
+          uni.navigateTo({
+            url: '/pages/room/join'
+          })
+        }
+      } catch (err) {
+        uni.hideLoading()
+        console.error('检查未结束对局失败:', err)
+        // 出错时直接跳转到加入房间页面
         uni.navigateTo({
           url: '/pages/room/join'
         })

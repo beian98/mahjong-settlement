@@ -146,7 +146,8 @@ export default {
       showVoteModal: false,
       voteCountdown: 30,
       voteTimer: null,
-      roomWatcher: null
+      roomWatcher: null,
+      pollTimer: null
     }
   },
 
@@ -200,6 +201,9 @@ export default {
     // 清理定时器和监听器
     if (this.voteTimer) {
       clearInterval(this.voteTimer)
+    }
+    if (this.pollTimer) {
+      clearInterval(this.pollTimer)
     }
     if (this.roomWatcher) {
       this.roomWatcher.close()
@@ -258,23 +262,29 @@ export default {
 
     watchRoom() {
       const db = wx.cloud.database()
+
+      // 启动实时监听
       this.roomWatcher = db.collection('rooms')
         .doc(this.roomId)
         .watch({
           onChange: (snapshot) => {
+            console.log('📡 实时监听触发，收到房间数据更新')
             if (snapshot.docs.length > 0) {
               const room = snapshot.docs[0]
+              console.log('📊 房间投票状态:', room.nextRoundVote)
 
               // 更新投票状态
               if (room.nextRoundVote) {
                 this.nextRoundVote = room.nextRoundVote
 
                 if (room.nextRoundVote.active) {
+                  console.log('✅ 检测到活跃投票，显示投票弹窗')
                   this.showVoteModal = true
                   if (!this.voteTimer) {
                     this.startVoteCountdown()
                   }
                 } else {
+                  console.log('❌ 投票已结束')
                   this.showVoteModal = false
                   if (this.voteTimer) {
                     clearInterval(this.voteTimer)
@@ -291,7 +301,7 @@ export default {
 
                     setTimeout(() => {
                       uni.redirectTo({
-                        url: `/pages/game/record?roomId=${this.roomId}&roomCode=${this.roomCode}`
+                        url: `/pages/game/record?roomId=${this.roomId}&roomCode=${this.roomCode}&initialChips=${this.initialChips}`
                       })
                     }, 1500)
                   }
@@ -303,6 +313,48 @@ export default {
             console.error('监听房间数据失败:', err)
           }
         })
+
+      // 添加轮询作为备用机制（每2秒检查一次）
+      // 因为微信云数据库的 watch 有时会有延迟
+      this.pollTimer = setInterval(async () => {
+        try {
+          const roomResult = await db.collection('rooms').doc(this.roomId).get()
+          if (roomResult.data && roomResult.data.nextRoundVote) {
+            const vote = roomResult.data.nextRoundVote
+
+            // 如果检测到新的投票或投票状态变化
+            if (vote.active && (!this.nextRoundVote || !this.nextRoundVote.active)) {
+              console.log('🔄 轮询检测到新投票，更新状态')
+              this.nextRoundVote = vote
+              this.showVoteModal = true
+              if (!this.voteTimer) {
+                this.startVoteCountdown()
+              }
+            } else if (!vote.active && this.nextRoundVote?.active) {
+              console.log('🔄 轮询检测到投票结束')
+              this.nextRoundVote = vote
+              this.showVoteModal = false
+
+              // 如果投票通过，跳转到记录页面
+              if (vote.passed && roomResult.data.status === 'playing') {
+                uni.showToast({
+                  title: '投票通过，开始新的一局',
+                  icon: 'success',
+                  duration: 1500
+                })
+
+                setTimeout(() => {
+                  uni.redirectTo({
+                    url: `/pages/game/record?roomId=${this.roomId}&roomCode=${this.roomCode}&initialChips=${this.initialChips}`
+                  })
+                }, 1500)
+              }
+            }
+          }
+        } catch (err) {
+          console.error('轮询房间数据失败:', err)
+        }
+      }, 2000)
     },
 
     startVoteCountdown() {

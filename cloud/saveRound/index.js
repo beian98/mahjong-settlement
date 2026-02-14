@@ -13,6 +13,24 @@ exports.main = async (event, context) => {
   const { OPENID } = cloud.getWXContext()
 
   try {
+    // 0. 验证房间和局数
+    const roomResult = await db.collection('rooms').doc(roomId).get()
+    if (!roomResult.data) {
+      return { success: false, message: '房间不存在' }
+    }
+
+    const room = roomResult.data
+    const currentRoundNumber = room.currentRound?.roundNumber || 1
+
+    // 验证局数是否匹配
+    if (roundNumber !== currentRoundNumber) {
+      console.error(`❌ 局数不匹配: 提交的局数=${roundNumber}, 当前局数=${currentRoundNumber}`)
+      return {
+        success: false,
+        message: `局数不匹配，当前是第${currentRoundNumber}局，不能保存第${roundNumber}局的数据`
+      }
+    }
+
     // 1. 验证筹码平衡（零和游戏）
     const totalScore = Object.values(scores).reduce((sum, score) => sum + score, 0)
     if (Math.abs(totalScore) >= 0.01) {

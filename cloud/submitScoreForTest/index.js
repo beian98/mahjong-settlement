@@ -32,8 +32,29 @@ exports.main = async (event, context) => {
 
     const room = roomResult.data
     const currentRound = room.currentRound || {}
+    const currentRoundNumber = currentRound.roundNumber || 1
+    const currentGameSessionId = room.gameSessionId || currentRound.gameSessionId
+
     // 创建一个新的 submissions 对象，避免直接修改数据库对象
     let submissions = JSON.parse(JSON.stringify(currentRound.submissions || {}))
+
+    // 关键修复：清理没有 roundNumber 或 roundNumber 不匹配的旧数据
+    // 同时验证 gameSessionId，确保不会混入其他对局的数据
+    console.log('🔍 开始清理旧数据，当前局数:', currentRoundNumber, '当前对局ID:', currentGameSessionId)
+    Object.keys(submissions).forEach(key => {
+      const record = submissions[key]
+      if (!record.roundNumber) {
+        console.warn(`🗑️ 清理缺少 roundNumber 的旧数据: ${key}`)
+        delete submissions[key]
+      } else if (record.roundNumber !== currentRoundNumber) {
+        console.warn(`🗑️ 清理过期数据: ${key} (记录局数: ${record.roundNumber}, 当前局数: ${currentRoundNumber})`)
+        delete submissions[key]
+      } else if (currentGameSessionId && record.gameSessionId && record.gameSessionId !== currentGameSessionId) {
+        console.warn(`🗑️ 清理其他对局的数据: ${key} (记录对局ID: ${record.gameSessionId}, 当前对局ID: ${currentGameSessionId})`)
+        delete submissions[key]
+      }
+    })
+    console.log('✅ 清理完成，剩余记录:', Object.keys(submissions))
 
     console.log('📊 从数据库读取的 submissions:', submissions)
     console.log('📊 submissions 的 keys:', Object.keys(submissions))
@@ -54,14 +75,14 @@ exports.main = async (event, context) => {
       score: parseFloat(score),
       submitted: true,
       timestamp: Date.now(),
-      roundNumber: currentRound.roundNumber || 1  // 记录是哪一局的提交
+      roundNumber: currentRoundNumber,  // 记录是哪一局的提交
+      gameSessionId: currentGameSessionId  // 记录是哪个对局的提交
     }
 
     console.log('📊 更新后的 submissions:', submissions)
     console.log('📊 更新后的 keys:', Object.keys(submissions))
 
     // 检查是否所有玩家都提交了（只统计当前局的提交）
-    const currentRoundNumber = currentRound.roundNumber || 1
     const allSubmitted = room.players.every(p => {
       const submission = submissions[p.openId]
       // 必须已提交且是当前局的数据
