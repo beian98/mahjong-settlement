@@ -1,0 +1,184 @@
+// 云函数入口文件
+const cloud = require('wx-server-sdk')
+
+cloud.init({
+  env: cloud.DYNAMIC_CURRENT_ENV
+})
+
+const db = cloud.database()
+const _ = db.command
+
+// 云函数入口函数
+exports.main = async (event, context) => {
+  const { roomId, score } = event
+  const { OPENID } = cloud.getWXContext()
+
+  console.log('=== submitScore 云函数开始 ===')
+  console.log('参数:', { roomId, score })
+  console.log('用户 OPENID:', OPENID)
+
+  try {
+    // 获取房间数据
+    const roomResult = await db.collection('rooms').doc(roomId).get()
+    if (!roomResult.data) {
+      return { success: false, message: '房间不存在' }
+    }
+
+    const room = roomResult.data
+    const currentRound = room.currentRound || {}
+    // 创建一个新的 submissions 对象，避免直接修改数据库对象
+    const submissions = JSON.parse(JSON.stringify(currentRound.submissions || {}))
+
+    // 更新当前玩家的提交
+    submissions[OPENID] = {
+      score: parseFloat(score),
+      submitted: true,
+      timestamp: Date.now(),
+      roundNumber: currentRound.roundNumber || 1  // 记录是哪一局的提交
+    }
+
+    // 检查是否所有玩家都提交了（只统计当前局的提交）
+    const currentRoundNumber = currentRound.roundNumber || 1
+    const allSubmitted = room.players.every(p => {
+      const submission = submissions[p.openId]
+      // 必须已提交且是当前局的数据
+      return submission?.submitted && submission?.roundNumber === currentRoundNumber
+    })
+
+    console.log('📊 检查所有玩家提交状态 (当前局:', currentRoundNumber, '):')
+    room.players.forEach(p => {
+      const submission = submissions[p.openId]
+      const isCurrentRound = submission?.roundNumber === currentRoundNumber
+      const status = submission?.submitted && isCurrentRound ? '✅ 已提交' : '❌ 未提交'
+      const roundInfo = submission?.roundNumber ? `(第${submission.roundNumber}局)` : ''
+      console.log(`  - ${p.nickName} (${p.openId}): ${status} ${roundInfo}`)
+    })
+    console.log('📊 allSubmitted 结果:', allSubmitted)
+
+    // 计算总分（只统计当前局的提交）
+    let totalScore = 0
+    room.players.forEach(p => {
+      const submission = submissions[p.openId]
+      if (submission?.submitted && submission?.roundNumber === currentRoundNumber) {
+        totalScore += submission.score || 0
+      }
+    })
+
+    // 检查是否平衡
+    const isBalanced = Math.abs(totalScore) < 0.01
+
+    console.log('📊 提交状态:', {
+      allSubmitted,
+      isBalanced,
+      totalScore,
+      submissions,
+      players: room.players.map(p => ({ openId: p.openId, nickName: p.nickName, submitted: !!submissions[p.openId]?.submitted }))
+    })
+
+    // 如果所有人都提交了但不平衡，清空最后提交人的记录
+    if (allSubmitted && !isBalanced) {
+      console.log('⚠️ 所有人已提交但不平衡，清空最后提交人的记录')
+
+      // 删除当前提交者（最后一个提交的人）的记录
+      delete submissions[OPENID]
+
+      // 更新房间数据
+      await db.collection('rooms').doc(roomId).update({
+        data: {
+          'currentRound.submissions': submissions,
+          'currentRound.allSubmitted': false,
+          'currentRound.isBalanced': false,
+          'currentRound.totalScore': totalScore
+        }
+      })
+
+      return {
+        success: true,
+        allSubmitted: false,
+        isBalanced: false,
+        needResubmit: true,
+        totalScore: totalScore,
+        message: `总分不平衡(${totalScore.toFixed(0)})，请重新填写`
+      }
+    }
+
+    // 如果所有人都提交了且平衡，自动保存本局
+    if (allSubmitted && isBalanced) {
+      console.log('✅ 所有人已提交且平衡，开始保存本局')
+
+      // 更新玩家筹码
+      const updatedPlayers = room.players.map(p => ({
+        ...p,
+        chipsBeforeRound: p.chips,
+        chips: p.chips + (submissions[p.openId]?.score || 0)
+      }))
+
+      // 检查是否有人筹码≤0
+      const isGameOver = updatedPlayers.some(p => p.chips <= 0)
+
+      // 保存游戏记录
+      await db.collection('games').add({
+        data: {
+          roomId: roomId,
+          roomCode: room.roomCode,
+          roundNumber: currentRound.roundNumber || 1,
+          players: updatedPlayers,
+          scores: submissions,
+          timestamp: Date.now(),
+          isGameOver: isGameOver
+        }
+      })
+
+      // 更新房间玩家筹码，并立即重置 currentRound
+      await db.collection('rooms').doc(roomId).update({
+        data: {
+          players: updatedPlayers,
+          status: isGameOver ? 'finished' : 'playing',
+          lastRoundNumber: currentRound.roundNumber || 1,
+          // 重置 currentRound，准备下一局
+          'currentRound.submissions': {},
+          'currentRound.allSubmitted': false,
+          'currentRound.isBalanced': false,
+          'currentRound.totalScore': 0,
+          'currentRound.roundNumber': _.inc(1)
+        }
+      })
+
+      console.log('🎉 本局保存成功，游戏状态:', isGameOver ? '已结束' : '继续')
+
+      return {
+        success: true,
+        allSubmitted: true,
+        isBalanced: true,
+        autoSaved: true,
+        isGameOver: isGameOver,
+        message: isGameOver ? '游戏结束' : '本局已结算，准备下一局'
+      }
+    }
+
+    // 只有在未完成提交时，才更新 submissions
+    await db.collection('rooms').doc(roomId).update({
+      data: {
+        'currentRound.submissions': submissions,
+        'currentRound.allSubmitted': allSubmitted,
+        'currentRound.isBalanced': isBalanced,
+        'currentRound.totalScore': totalScore
+      }
+    })
+
+    return {
+      success: true,
+      allSubmitted,
+      isBalanced,
+      totalScore,
+      autoSaved: false,
+      message: '提交成功，等待其他玩家...'
+    }
+  } catch (err) {
+    console.error('❌ 提交分数失败:', err)
+    return {
+      success: false,
+      message: '提交失败: ' + err.message
+    }
+  }
+}

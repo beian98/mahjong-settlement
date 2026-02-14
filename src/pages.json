@@ -1,0 +1,52 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "你胡十三幺了吗"
+      }
+    },
+    {
+      "path": "pages/room/create",
+      "style": {
+        "navigationBarTitleText": "创建房间"
+      }
+    },
+    {
+      "path": "pages/room/join",
+      "style": {
+        "navigationBarTitleText": "加入房间"
+      }
+    },
+    {
+      "path": "pages/room/lobby",
+      "style": {
+        "navigationBarTitleText": "房间大厅"
+      }
+    },
+    {
+      "path": "pages/game/record",
+      "style": {
+        "navigationBarTitleText": "记录分数"
+      }
+    },
+    {
+      "path": "pages/game/settlement",
+      "style": {
+        "navigationBarTitleText": "结算结果"
+      }
+    },
+    {
+      "path": "pages/game/finalSettlement",
+      "style": {
+        "navigationBarTitleText": "最终结算"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "你胡十三幺了吗",
+    "navigationBarBackgroundColor": "#F8F8F8",
+    "backgroundColor": "#F8F8F8"
+  }
+}

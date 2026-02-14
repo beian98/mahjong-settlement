@@ -1,0 +1,9 @@
+{
+  "name": "checkNextRoundVoteTimeout",
+  "version": "1.0.0",
+  "description": "检查再来一局投票是否超时",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

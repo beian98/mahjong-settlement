@@ -1,0 +1,9 @@
+{
+  "name": "voteNextRound",
+  "version": "1.0.0",
+  "description": "对再来一局进行投票",
+  "main": "index.js",
+  "dependencies": {
+    "wx-server-sdk": "~2.6.3"
+  }
+}

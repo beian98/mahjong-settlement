@@ -1,0 +1,27 @@
+{
+  "name": "mahjong-settlement",
+  "appid": "__UNI__XXXXXX",
+  "description": "麻将筹码结算小程序",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "mp-weixin": {
+    "appid": "wx3d6d89d208379e42",
+    "setting": {
+      "urlCheck": false,
+      "es6": true,
+      "postcss": true,
+      "minified": true
+    },
+    "usingComponents": true,
+    "permission": {
+      "scope.userLocation": {
+        "desc": "你的位置信息将用于小程序位置接口的效果展示"
+      }
+    },
+    "cloudfunctionRoot": "cloud/"
+  },
+  "uniStatistics": {
+    "enable": false
+  }
+}
