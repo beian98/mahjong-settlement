@@ -146,10 +146,35 @@ export default {
     },
 
     joinRoom() {
-      // 加入房间页面会自己检查，这里直接跳转
-      uni.navigateTo({
-        url: '/pages/room/join'
-      });
+      // 检查是否有进行中的对局
+      const currentRoom = wx.getStorageSync('currentRoom')
+      if (currentRoom && currentRoom.roomId) {
+        // 有进行中的对局，询问是否恢复
+        wx.showModal({
+          title: '恢复游戏',
+          content: `检测到房间 ${currentRoom.roomCode} 正在进行中，是否继续游戏？`,
+          confirmText: '继续游戏',
+          cancelText: '加入其他房间',
+          success: (res) => {
+            if (res.confirm) {
+              // 继续当前游戏
+              uni.navigateTo({
+                url: `/pages/game/record?roomId=${currentRoom.roomId}&roomCode=${currentRoom.roomCode}`
+              })
+            } else {
+              // 加入其他房间
+              uni.navigateTo({
+                url: '/pages/room/join'
+              })
+            }
+          }
+        })
+      } else {
+        // 没有进行中的对局，直接跳转到加入房间页面
+        uni.navigateTo({
+          url: '/pages/room/join'
+        })
+      }
     },
 
     loadRecentGames() {

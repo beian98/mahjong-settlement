@@ -136,7 +136,9 @@ exports.main = async (event, context) => {
       roomId: room._id,
       roomCode: room.roomCode,
       initialChips: room.initialChips,
-      playerCount: updatedRoom.players.length
+      playerCount: updatedRoom.players.length,
+      isRejoin: false,  // 新加入的玩家
+      roomStatus: updatedRoom.status  // 返回房间状态
     }
 
     console.log('🎉 加入成功，返回结果:', result)

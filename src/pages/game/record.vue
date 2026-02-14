@@ -1,13 +1,5 @@
 <template>
   <view class="game-record">
-    <!-- 调试信息 - 实机测试用 -->
-    <view class="debug-info" v-if="true">
-      <text class="debug-text">mySubmitted: {{ mySubmitted }}</text>
-      <text class="debug-text">submissions数量: {{ Object.keys(submissions).length }}</text>
-      <text class="debug-text">我的openId: {{ myOpenId ? myOpenId.substring(0, 8) : 'null' }}</text>
-      <text class="debug-text">数据库有我: {{ submissions[myOpenId] ? '是' : '否' }}</text>
-    </view>
-
     <!-- 游戏信息头部 -->
     <view class="game-header">
       <view class="round-info">
