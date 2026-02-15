@@ -146,24 +146,23 @@ export default {
     },
 
     async joinRoom() {
-      // 显示加载提示
-      uni.showLoading({
-        title: '检查中...'
-      })
-
       try {
         console.log('📞 开始调用 checkOngoingGame 云函数')
 
-        // 调用云函数检查是否有未结束的对局
-        const result = await wx.cloud.callFunction({
-          name: 'checkOngoingGame',
-          data: {}
-        })
+        // 调用云函数检查是否有未结束的对局（设置超时时间）
+        const result = await Promise.race([
+          wx.cloud.callFunction({
+            name: 'checkOngoingGame',
+            data: {}
+          }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('检查超时')), 3000)
+          )
+        ])
 
         console.log('📦 云函数返回结果:', result)
-        uni.hideLoading()
 
-        if (result.result.success && result.result.hasOngoingGame) {
+        if (result.result && result.result.success && result.result.hasOngoingGame) {
           // 有未结束的对局，询问是否恢复
           const room = result.result.room
           console.log('✅ 检测到未结束的对局:', room)
@@ -195,22 +194,11 @@ export default {
           })
         }
       } catch (err) {
-        uni.hideLoading()
-        console.error('❌ 检查未结束对局失败:', err)
-
-        // 显示错误提示
-        wx.showToast({
-          title: '检查失败，请重试',
-          icon: 'none',
-          duration: 2000
+        // 检查失败不影响正常流程，直接跳转到加入房间页面
+        console.warn('⚠️ 检查未结束对局失败，跳过检查:', err)
+        uni.navigateTo({
+          url: '/pages/room/join'
         })
-
-        // 延迟跳转，让用户看到错误提示
-        setTimeout(() => {
-          uni.navigateTo({
-            url: '/pages/room/join'
-          })
-        }, 2000)
       }
     },
 
