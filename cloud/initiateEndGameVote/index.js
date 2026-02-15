@@ -47,10 +47,11 @@ exports.main = async (event, context) => {
       passed: false
     }
 
-    // 更新房间数据
+    // 更新房间数据 - 使用 _.set() 强制替换整个 endGameVote 对象
+    const _ = db.command
     await db.collection('rooms').doc(roomId).update({
       data: {
-        'currentRound.endGameVote': endGameVote
+        'currentRound.endGameVote': _.set(endGameVote)
       }
     })
 

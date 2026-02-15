@@ -84,34 +84,6 @@ export default {
         return
       }
 
-      // 检查是否有进行中的对局
-      const currentRoom = wx.getStorageSync('currentRoom')
-      if (currentRoom && currentRoom.roomId) {
-        // 如果要加入的是同一个房间，直接加入
-        if (currentRoom.roomCode === this.roomCode) {
-          await this.joinRoom()
-          return
-        }
-
-        // 如果是不同的房间，询问是否放弃当前对局
-        const res = await new Promise((resolve) => {
-          wx.showModal({
-            title: '提示',
-            content: `检测到房间 ${currentRoom.roomCode} 正在进行中，加入新房间将放弃当前对局，是否继续？`,
-            confirmText: '继续加入',
-            cancelText: '取消',
-            success: resolve
-          })
-        })
-
-        if (!res.confirm) {
-          return
-        }
-
-        // 清除旧的房间信息
-        wx.removeStorageSync('currentRoom')
-      }
-
       await this.joinRoom()
     },
 
@@ -153,24 +125,10 @@ export default {
 
           // 根据房间状态和是否重新加入来决定跳转页面
           if (result.result.isRejoin && result.result.roomStatus === 'playing') {
-            // 重新加入进行中的游戏，询问用户是否继续
-            const confirmRes = await new Promise((resolve) => {
-              wx.showModal({
-                title: '恢复游戏',
-                content: `检测到房间 ${result.result.roomCode} 正在进行中，是否继续游戏？`,
-                confirmText: '继续游戏',
-                cancelText: '取消',
-                success: resolve
-              })
+            // 重新加入进行中的游戏，直接跳转到游戏记录页面
+            uni.redirectTo({
+              url: `/pages/game/record?roomId=${result.result.roomId}&roomCode=${result.result.roomCode}&initialChips=${result.result.initialChips}`
             })
-
-            if (confirmRes.confirm) {
-              // 跳转到游戏记录页面
-              uni.redirectTo({
-                url: `/pages/game/record?roomId=${result.result.roomId}&roomCode=${result.result.roomCode}&initialChips=${result.result.initialChips}`
-              })
-            }
-            // 用户取消时，loading 会在 finally 中重置
           } else {
             // 新加入或房间还在等待中，跳转到房间大厅
             uni.redirectTo({
