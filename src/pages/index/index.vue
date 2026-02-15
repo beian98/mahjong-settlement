@@ -152,17 +152,22 @@ export default {
       })
 
       try {
+        console.log('📞 开始调用 checkOngoingGame 云函数')
+
         // 调用云函数检查是否有未结束的对局
         const result = await wx.cloud.callFunction({
           name: 'checkOngoingGame',
           data: {}
         })
 
+        console.log('📦 云函数返回结果:', result)
         uni.hideLoading()
 
         if (result.result.success && result.result.hasOngoingGame) {
           // 有未结束的对局，询问是否恢复
           const room = result.result.room
+          console.log('✅ 检测到未结束的对局:', room)
+
           wx.showModal({
             title: '恢复游戏',
             content: `检测到房间 ${room.roomCode} 正在进行中，是否继续游戏？`,
@@ -184,17 +189,28 @@ export default {
           })
         } else {
           // 没有进行中的对局，直接跳转到加入房间页面
+          console.log('✅ 没有未结束的对局，跳转到加入房间页面')
           uni.navigateTo({
             url: '/pages/room/join'
           })
         }
       } catch (err) {
         uni.hideLoading()
-        console.error('检查未结束对局失败:', err)
-        // 出错时直接跳转到加入房间页面
-        uni.navigateTo({
-          url: '/pages/room/join'
+        console.error('❌ 检查未结束对局失败:', err)
+
+        // 显示错误提示
+        wx.showToast({
+          title: '检查失败，请重试',
+          icon: 'none',
+          duration: 2000
         })
+
+        // 延迟跳转，让用户看到错误提示
+        setTimeout(() => {
+          uni.navigateTo({
+            url: '/pages/room/join'
+          })
+        }, 2000)
       }
     },
 
